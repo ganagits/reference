@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BSSV Monitor</title>
+<style>
+  :root{
+    color-scheme: light;
+    --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f3f3f0;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+    --good:#0ca30c; --good-ink:#006300; --bad:#d03b3b; --warn:#fab219;
+    --good-soft:rgba(12,163,12,.12); --bad-soft:rgba(208,59,59,.12);
+    --shadow:0 1px 2px rgba(11,11,11,.05), 0 8px 24px rgba(11,11,11,.05);
+    --radius:14px;
+    --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --page:#0d0d0d; --surface:#1a1a19; --surface-2:#222220;
+      --ink:#fff; --ink-2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+      --good-ink:#0ca30c;
+      --good-soft:rgba(12,163,12,.16); --bad-soft:rgba(208,59,59,.18);
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --surface-2:#222220;
+    --ink:#fff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+    --good-ink:#0ca30c;
+    --good-soft:rgba(12,163,12,.16); --bad-soft:rgba(208,59,59,.18);
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--page); color:var(--ink); font-family:var(--font);
+    font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1440px; margin:0 auto; padding-block:20px 56px; padding-left:20px; padding-right:20px}
+
+  /* ---------- header ---------- */
+  header{display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; justify-content:space-between; margin-bottom:18px}
+  .brand{display:flex; align-items:center; gap:12px}
+  .dot{width:12px;height:12px;border-radius:50%;background:var(--good);box-shadow:0 0 0 4px var(--good-soft)}
+  .dot.bad{background:var(--bad);box-shadow:0 0 0 4px var(--bad-soft)}
+  h1{margin:0; font-size:19px; letter-spacing:-.01em; font-weight:650}
+  .sub{color:var(--muted); font-size:12.5px; margin-top:2px}
+  .tools{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  button, .chip{
+    font:inherit; font-size:12.5px; color:var(--ink-2); background:var(--surface);
+    border:1px solid var(--border); border-radius:999px; padding:6px 13px; cursor:pointer;
+    transition:background .12s, color .12s, border-color .12s;
+  }
+  button:hover{background:var(--surface-2); color:var(--ink)}
+  button[aria-pressed="true"]{background:var(--ink); color:var(--page); border-color:var(--ink)}
+  .countdown{font-variant-numeric:tabular-nums; color:var(--muted); font-size:12.5px; min-width:104px; text-align:right}
+
+  .banner{
+    display:none; margin-bottom:16px; padding:10px 14px; border-radius:10px;
+    border:1px solid var(--border); background:var(--bad-soft); color:var(--ink); font-size:13px;
+  }
+  .banner.show{display:block}
+
+  /* ---------- environment selector ---------- */
+  .envbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px}
+  .envbar .lab{
+    font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted);
+    margin-right:2px;
+  }
+  .envbar button{display:inline-flex; align-items:center; gap:7px}
+  .envbar button .n{font-variant-numeric:tabular-nums; opacity:.65}
+  .envbar button .st{width:7px; height:7px; border-radius:50%; background:var(--good)}
+  .envbar button .st.bad{background:var(--bad)}
+  .envbar button[aria-pressed="true"] .n{opacity:.8}
+  .env-tag{
+    font-size:10.5px; font-weight:650; letter-spacing:.05em; padding:2px 7px; border-radius:4px;
+    background:var(--surface-2); color:var(--ink-2); border:1px solid var(--border);
+  }
+  .env-tag.prod{background:var(--bad-soft); color:var(--bad); border-color:transparent}
+
+  /* ---------- cards ---------- */
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow)}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:14px}
+  .kpi{padding:16px 18px}
+  .kpi .label{font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:7px}
+  .kpi .value{font-size:34px; font-weight:640; letter-spacing:-.02em; margin-top:6px; line-height:1.1}
+  .kpi .foot{font-size:12px; color:var(--ink-2); margin-top:3px}
+  .swatch{width:9px;height:9px;border-radius:2px;display:inline-block}
+  .sw-ok{background:var(--good)} .sw-bad{background:var(--bad)} .sw-all{background:var(--axis)}
+  .val-ok{color:var(--good-ink)} .val-bad{color:var(--bad)}
+
+  /* ---------- chart ---------- */
+  .panel{padding:18px 18px 12px; margin-bottom:14px}
+  .panel-head{display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; justify-content:space-between; margin-bottom:4px}
+  .panel-title{font-size:14.5px; font-weight:620; margin:0}
+  .panel-note{font-size:12px; color:var(--muted)}
+  .legend{display:flex; gap:14px; align-items:center; font-size:12px; color:var(--ink-2)}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .chart-scroll{overflow-x:auto; margin-top:10px}
+  svg.chart{display:block; width:100%; min-width:640px; height:200px}
+  .bar-ok{fill:var(--good)} .bar-bad{fill:var(--bad)}
+  .gridline{stroke:var(--grid); stroke-width:1}
+  .baseline{stroke:var(--axis); stroke-width:1}
+  .tick{fill:var(--muted); font-size:10.5px}
+  .hitbox{fill:transparent}
+  .hitbox:hover ~ .hl, .bargroup:hover .hl{opacity:1}
+
+  #tip{
+    position:fixed; z-index:60; pointer-events:none; opacity:0; transition:opacity .1s;
+    background:var(--surface); color:var(--ink); border:1px solid var(--border);
+    border-radius:9px; box-shadow:var(--shadow); padding:9px 11px; font-size:12.5px; max-width:320px;
+  }
+  #tip.on{opacity:1}
+  #tip b{font-weight:620}
+  #tip .row{display:flex; gap:10px; justify-content:space-between; margin-top:3px; color:var(--ink-2)}
+  #tip .row .n{font-variant-numeric:tabular-nums; color:var(--ink)}
+
+  /* ---------- server grid ---------- */
+  .envgroup{margin-top:16px}
+  .envgroup:first-child{margin-top:8px}
+  .envgroup > h3{
+    margin:0 0 9px; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--muted); font-weight:600; display:flex; align-items:center; gap:9px;
+  }
+  .envgroup > h3::after{content:""; flex:1; height:1px; background:var(--grid)}
+  .servers{display:grid; grid-template-columns:repeat(auto-fill,minmax(268px,1fr)); gap:12px}
+  .srv{padding:14px 15px; border-radius:12px; border:1px solid var(--border); background:var(--surface-2)}
+  .srv.down{border-color:var(--bad); background:var(--bad-soft)}
+  .srv .top{display:flex; align-items:center; gap:8px; justify-content:space-between}
+  .srv .name{font-weight:620; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .srv .meta{font-size:11.5px; color:var(--muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .srv .stats{display:flex; gap:14px; margin-top:10px; font-size:12px; color:var(--ink-2)}
+  .srv .stats b{display:block; font-size:15px; color:var(--ink); font-weight:620; font-variant-numeric:tabular-nums}
+  .pill{font-size:11px; font-weight:620; padding:3px 9px; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:5px}
+  .pill.ok{background:var(--good-soft); color:var(--good-ink)}
+  .pill.bad{background:var(--bad-soft); color:var(--bad)}
+
+  /* ---------- table ---------- */
+  .filters{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:14px 0 4px}
+  input[type=search]{
+    font:inherit; font-size:12.5px; padding:6px 12px; border-radius:999px; min-width:200px;
+    border:1px solid var(--border); background:var(--surface); color:var(--ink);
+  }
+  input[type=search]::placeholder{color:var(--muted)}
+  .table-scroll{overflow-x:auto; margin-top:6px}
+  table{border-collapse:collapse; width:100%; min-width:900px; font-size:12.5px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--grid); vertical-align:top}
+  th{
+    position:sticky; top:0; background:var(--surface); color:var(--muted); font-weight:600;
+    font-size:11px; letter-spacing:.05em; text-transform:uppercase; white-space:nowrap; z-index:2;
+  }
+  td.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  td.time{white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--ink-2)}
+  tr.fail td{background:var(--bad-soft)}
+  td.detail{color:var(--ink-2); max-width:420px; overflow-wrap:anywhere}
+  .more{display:block; width:100%; margin-top:12px; border-radius:10px}
+  .empty{padding:34px 10px; text-align:center; color:var(--muted)}
+  footer{margin-top:22px; color:var(--muted); font-size:11.5px; text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="dot" id="pulse"></span>
+      <div>
+        <h1>BSSV Connectivity Monitor</h1>
+        <div class="sub" id="subtitle">Loading&hellip;</div>
+      </div>
+    </div>
+    <div class="tools">
+      <span class="countdown" id="countdown">refresh in 60s</span>
+      <button id="refresh" title="Reload now">Refresh</button>
+      <button id="theme" title="Toggle light / dark">Theme</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <section class="envbar" id="envbar"></section>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="card panel">
+    <div class="panel-head">
+      <h2 class="panel-title">Checks per hour</h2>
+      <div class="legend">
+        <span><i class="swatch sw-ok"></i> Success</span>
+        <span><i class="swatch sw-bad"></i> Failed</span>
+      </div>
+    </div>
+    <div class="panel-note" id="chartNote"></div>
+    <div class="chart-scroll"><svg class="chart" id="chart" role="img" aria-label="Successful and failed checks per hour"></svg></div>
+  </section>
+
+  <section class="card panel">
+    <div class="panel-head">
+      <h2 class="panel-title">Servers by environment</h2>
+      <div class="panel-note" id="serverNote"></div>
+    </div>
+    <div id="servers"></div>
+  </section>
+
+  <section class="card panel">
+    <div class="panel-head">
+      <h2 class="panel-title">Check history</h2>
+      <div class="panel-note">Newest first</div>
+    </div>
+    <div class="filters">
+      <button data-f="ALL" aria-pressed="true">All</button>
+      <button data-f="SUCCESS" aria-pressed="false">Success</button>
+      <button data-f="FAILED" aria-pressed="false">Failed</button>
+      <input type="search" id="search" placeholder="Filter server, service, reason&hellip;" autocomplete="off">
+      <span class="panel-note" id="rowCount"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Server</th><th>Env</th><th>Service</th><th>Status</th>
+          <th>HTTP</th><th style="text-align:right">ms</th><th>Reason</th><th>Detail</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="tableEmpty" hidden>No checks match this filter.</div>
+    <button class="more" id="more" hidden>Show more</button>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<div id="tip" role="tooltip"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var FEED = "status.json";
+  var REFRESH_MS = 60000;
+  var PAGE = 100;
+
+  var state = { data: null, env: "ALL", filter: "ALL", query: "", shown: PAGE, failedFetches: 0 };
+  var PROD_LIKE = { PROD: 1, PRODUCTION: 1, PRD: 1, LIVE: 1 };
+  var isProd = function (e) { return !!PROD_LIKE[String(e || "").toUpperCase()]; };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  };
+  var num = function (n) { return (n || 0).toLocaleString(); };
+
+  /* ---------- theme ---------- */
+  try {
+    var saved = localStorage.getItem("bssv-theme");
+    if (saved) document.documentElement.setAttribute("data-theme", saved);
+    var savedEnv = localStorage.getItem("bssv-env");
+    if (savedEnv) state.env = savedEnv;      // remember the chosen environment
+  } catch (e) {}
+  $("theme").addEventListener("click", function () {
+    var root = document.documentElement;
+    var isDark = root.getAttribute("data-theme") === "dark" ||
+      (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    var next = isDark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("bssv-theme", next); } catch (e) {}
+    if (state.data) drawChart(state.data);
+  });
+
+  /* ---------- fetch ---------- */
+  function load() {
+    fetch(FEED + "?_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        state.failedFetches = 0;
+        $("banner").className = "banner";
+        state.data = d;
+        render(d);
+      })
+      .catch(function (err) {
+        state.failedFetches++;
+        var b = $("banner");
+        b.className = "banner show";
+        b.textContent = "Could not load " + FEED + " (" + err.message + "). Showing the last known data. " +
+          "Check that bssv_monitor.py is running and publishing to this folder.";
+      });
+  }
+
+  /* ---------- environment helpers ---------- */
+  function envStats(d) { return d.environments || []; }
+
+  function activeSummary(d) {
+    if (state.env === "ALL") return d.summary || {};
+    var e = envStats(d).filter(function (x) { return x.name === state.env; })[0];
+    return e ? {
+      all: e.all, success: e.success, failed: e.failed, success_rate: e.success_rate,
+      servers_total: e.servers_total, servers_down: e.servers_down
+    } : { all: 0, success: 0, failed: 0, success_rate: 0, servers_total: 0, servers_down: 0 };
+  }
+
+  function inEnv(item) { return state.env === "ALL" || item.environment === state.env; }
+
+  function drawEnvBar(d) {
+    var envs = envStats(d);
+    var all = d.summary || {};
+    var html = ['<span class="lab">Environment</span>'];
+
+    html.push(envChip("ALL", "All", all.all, all.servers_down));
+    envs.forEach(function (e) {
+      html.push(envChip(e.name, e.name, e.all, e.servers_down));
+    });
+    $("envbar").innerHTML = html.join("");
+
+    $("envbar").querySelectorAll("button[data-env]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.env = btn.getAttribute("data-env");
+        try { localStorage.setItem("bssv-env", state.env); } catch (err) {}
+        state.shown = PAGE;
+        render(state.data);
+      });
+    });
+  }
+
+  function envChip(value, label, count, down) {
+    return '<button type="button" data-env="' + esc(value) + '" aria-pressed="' +
+      (state.env === value) + '" title="' + esc(label) + '">' +
+      '<i class="st' + (down ? " bad" : "") + '"></i>' + esc(label) +
+      '<span class="n">' + num(count) + "</span></button>";
+  }
+
+  /* ---------- render ---------- */
+  function render(d) {
+    if (!d) return;
+    // The selected environment may disappear from the feed (row disabled).
+    if (state.env !== "ALL" && !envStats(d).some(function (e) { return e.name === state.env; })) {
+      state.env = "ALL";
+    }
+
+    var s = activeSummary(d);
+    var down = s.servers_down || 0;
+    var scope = state.env === "ALL" ? "all environments" : state.env;
+
+    $("pulse").className = "dot" + (down ? " bad" : "");
+    $("subtitle").innerHTML =
+      "Last " + esc(d.window_hours) + " hours &middot; " + esc(scope) +
+      " &middot; updated " + esc(d.generated_at_local) +
+      " &middot; probe every " + esc(Math.round((d.run_interval_seconds || 0) / 60 * 10) / 10) + " min";
+
+    drawEnvBar(d);
+
+    var affected = (d.summary || {}).environments_affected || 0;
+    $("kpis").innerHTML = [
+      kpi("All checks", num(s.all), "sw-all", "",
+        num(s.servers_total) + " server(s) in " + scope),
+      kpi("Success", num(s.success), "sw-ok", "val-ok",
+        (s.success_rate || 0) + "% success rate"),
+      kpi("Failed", num(s.failed), "sw-bad", s.failed ? "val-bad" : "",
+        down ? down + " server(s) currently down" : "all servers currently up"),
+      state.env === "ALL"
+        ? kpi("Environments", num((d.summary || {}).environments_total),
+            "sw-all", affected ? "val-bad" : "",
+            affected ? affected + " with a server down" : "all environments healthy")
+        : kpi("Avg response", avgMs(d) + " ms", "sw-all", "", "across successful checks in " + scope)
+    ].join("");
+
+    $("chartNote").textContent = "Hourly buckets, oldest to newest (local time) — " + scope + ".";
+    drawChart(d);
+
+    var servers = (d.servers || []).filter(inEnv);
+    var serversDown = servers.filter(function (x) { return x.last_status !== "SUCCESS"; }).length;
+    $("serverNote").textContent = servers.length
+      ? (servers.length - serversDown) + " up, " + serversDown + " down"
+      : "no data yet";
+    $("servers").innerHTML = servers.length ? groupedServers(servers)
+      : '<div class="empty">No checks recorded for ' + esc(scope) + " in this window.</div>";
+
+    state.shown = PAGE;
+    drawTable();
+
+    var rows = (d.checks || []).length;
+    $("footer").textContent =
+      "Feed generated " + (d.generated_at_utc || "") + " · auto-refresh every 60s · " +
+      (d.truncated ? "detail list truncated to " + num(rows) + " rows" : num(rows) + " rows in window");
+  }
+
+  function groupedServers(servers) {
+    var order = [], groups = {};
+    servers.forEach(function (s) {                 // the feed is already env-ordered
+      var e = s.environment || "-";
+      if (!groups[e]) { groups[e] = []; order.push(e); }
+      groups[e].push(s);
+    });
+    return order.map(function (e) {
+      var list = groups[e];
+      var bad = list.filter(function (x) { return x.last_status !== "SUCCESS"; }).length;
+      return '<div class="envgroup"><h3><span class="env-tag' + (isProd(e) ? " prod" : "") + '">' +
+        esc(e) + "</span> " + list.length + " server(s)" + (bad ? " · " + bad + " down" : "") +
+        '</h3><div class="servers">' + list.map(serverCard).join("") + "</div></div>";
+    }).join("");
+  }
+
+  function kpi(label, value, swatch, valueClass, foot) {
+    return '<div class="card kpi"><div class="label"><i class="swatch ' + swatch + '"></i>' + esc(label) + "</div>" +
+      '<div class="value ' + valueClass + '">' + value + "</div>" +
+      '<div class="foot">' + esc(foot) + "</div></div>";
+  }
+
+  function avgMs(d) {
+    var list = (d.checks || []).filter(function (c) {
+      return c.status === "SUCCESS" && c.response_ms && inEnv(c);
+    });
+    if (!list.length) return "–";
+    var total = list.reduce(function (a, c) { return a + c.response_ms; }, 0);
+    return num(Math.round(total / list.length));
+  }
+
+  function serverCard(s) {
+    var ok = s.last_status === "SUCCESS";
+    return '<div class="srv' + (ok ? "" : " down") + '">' +
+      '<div class="top"><div class="name" title="' + esc(s.server_name) + '">' + esc(s.server_name) + "</div>" +
+      '<span class="pill ' + (ok ? "ok" : "bad") + '">' + (ok ? "● UP" : "● DOWN") + "</span></div>" +
+      '<div class="meta" title="' + esc(s.endpoint_url) + '"><span class="env-tag' +
+        (isProd(s.environment) ? " prod" : "") + '">' + esc(s.environment) + "</span> " +
+        esc(s.service_name) + "</div>" +
+      '<div class="stats">' +
+        "<div>Uptime<b>" + esc(s.uptime_pct) + "%</b></div>" +
+        "<div>Checks<b>" + num(s.total) + "</b></div>" +
+        "<div>Failed<b" + (s.failed ? ' class="val-bad"' : "") + ">" + num(s.failed) + "</b></div>" +
+        "<div>Avg<b>" + num(s.avg_response_ms) + " ms</b></div>" +
+      "</div>" +
+      '<div class="meta" style="margin-top:9px">Last check ' + esc(s.last_checked_local) +
+        (ok ? "" : " · " + esc(s.last_failure_reason)) + "</div>" +
+      "</div>";
+  }
+
+  /* ---------- chart ---------- */
+  function drawChart(d) {
+    var svg = $("chart");
+    var hours = (d.hourly || []).map(function (h) {
+      if (state.env === "ALL") return h;
+      var e = (h.by_env || {})[state.env] || { success: 0, failed: 0 };
+      return { hour_utc: h.hour_utc, hour_local: h.hour_local, success: e.success, failed: e.failed };
+    });
+    var W = Math.max(640, svg.clientWidth || 900), H = 200;
+    var padL = 38, padR = 8, padT = 12, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var max = 0;
+    hours.forEach(function (h) { max = Math.max(max, h.success + h.failed); });
+    var top = Math.max(4, Math.ceil(max / 4) * 4);
+
+    var slot = plotW / Math.max(1, hours.length);
+    var bw = Math.max(2, Math.min(18, slot - 2));      // 2px surface gap between bars
+    var parts = [];
+
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("preserveAspectRatio", "none");
+
+    for (var g = 0; g <= 4; g++) {
+      var val = top / 4 * g;
+      var y = padT + plotH - (val / top) * plotH;
+      parts.push('<line class="gridline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '"/>');
+      parts.push('<text class="tick" x="' + (padL - 7) + '" y="' + (y + 3.5) + '" text-anchor="end">' + val + "</text>");
+    }
+
+    hours.forEach(function (h, i) {
+      var x = padL + i * slot + (slot - bw) / 2;
+      var total = h.success + h.failed;
+      var y = padT + plotH;
+      var okH = total ? (h.success / top) * plotH : 0;
+      var badH = total ? (h.failed / top) * plotH : 0;
+
+      if (badH > 0) {
+        y -= badH;
+        parts.push(rounded(x, y, bw, badH, "bar-bad", badH >= 4));
+      }
+      if (okH > 0) {
+        var gap = badH > 0 ? 2 : 0;                    // 2px surface gap between segments
+        y -= (okH + gap);
+        parts.push(rounded(x, y, bw, Math.max(1, okH - gap), "bar-ok", badH === 0));
+      }
+      parts.push('<rect class="hitbox" x="' + (padL + i * slot) + '" y="' + padT + '" width="' + slot +
+        '" height="' + plotH + '" data-i="' + i + '"><title></title></rect>');
+
+      var label = h.hour_local || "";
+      var isMidnight = label.slice(-5) === "00:00";
+      var hourOfDay = parseInt(label.slice(-5, -3), 10);
+      // Periodic ticks step aside near midnight so they never collide with the
+      // wider day marker.
+      var periodic = (hours.length <= 24 ? i % 3 === 0 : i % 6 === 0) &&
+        !(hourOfDay <= 2 || hourOfDay >= 22);
+      if (isMidnight || periodic) {
+        parts.push('<text class="tick" x="' + (padL + i * slot + slot / 2) + '" y="' + (H - 8) +
+          '" text-anchor="middle">' +
+          esc(isMidnight ? label.split(" ").slice(0, 2).join(" ") : label.split(" ").slice(-1)[0]) +
+          "</text>");
+      }
+    });
+
+    parts.push('<line class="baseline" x1="' + padL + '" x2="' + (W - padR) +
+      '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '"/>');
+    svg.innerHTML = parts.join("");
+
+    var tip = $("tip");
+    svg.querySelectorAll(".hitbox").forEach(function (box) {
+      box.addEventListener("mousemove", function (ev) {
+        var h = hours[+box.getAttribute("data-i")];
+        if (!h) return;
+        tip.innerHTML = "<b>" + esc(h.hour_local) + "</b>" +
+          (state.env === "ALL" ? "" : '<div class="row"><span>Environment</span><span class="n">' +
+            esc(state.env) + "</span></div>") +
+          '<div class="row"><span>Success</span><span class="n">' + num(h.success) + "</span></div>" +
+          '<div class="row"><span>Failed</span><span class="n">' + num(h.failed) + "</span></div>" +
+          '<div class="row"><span>Total</span><span class="n">' + num(h.success + h.failed) + "</span></div>";
+        tip.classList.add("on");
+        var x = Math.min(ev.clientX + 14, window.innerWidth - tip.offsetWidth - 10);
+        tip.style.left = x + "px";
+        tip.style.top = Math.max(8, ev.clientY - tip.offsetHeight - 12) + "px";
+      });
+      box.addEventListener("mouseleave", function () { tip.classList.remove("on"); });
+    });
+  }
+
+  function rounded(x, y, w, h, cls, roundTop) {
+    var r = roundTop ? Math.min(4, w / 2, h) : 0;      // 4px rounded data-end
+    if (!r) return '<rect class="' + cls + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '"/>';
+    return '<path class="' + cls + '" d="M' + x + " " + (y + h) + "V" + (y + r) +
+      "a" + r + " " + r + " 0 0 1 " + r + " " + -r + "h" + (w - 2 * r) +
+      "a" + r + " " + r + " 0 0 1 " + r + " " + r + "V" + (y + h) + 'Z"/>';
+  }
+
+  /* ---------- table ---------- */
+  function drawTable() {
+    var rows = ((state.data || {}).checks || []).filter(function (c) {
+      if (!inEnv(c)) return false;
+      if (state.filter !== "ALL" && c.status !== state.filter) return false;
+      if (!state.query) return true;
+      var hay = (c.server_name + " " + c.environment + " " + c.service_name + " " +
+        c.status + " " + c.failure_reason + " " + c.detail + " " + c.endpoint_url).toLowerCase();
+      return hay.indexOf(state.query) !== -1;
+    });
+
+    var slice = rows.slice(0, state.shown);
+    $("tbody").innerHTML = slice.map(function (c) {
+      var ok = c.status === "SUCCESS";
+      return "<tr" + (ok ? "" : ' class="fail"') + ">" +
+        '<td class="time">' + esc(c.timestamp_local) + "</td>" +
+        "<td>" + esc(c.server_name) + "</td>" +
+        '<td><span class="env-tag' + (isProd(c.environment) ? " prod" : "") + '">' +
+          esc(c.environment) + "</span></td>" +
+        "<td>" + esc(c.service_name) + "</td>" +
+        '<td><span class="pill ' + (ok ? "ok" : "bad") + '">' + (ok ? "● SUCCESS" : "● FAILED") + "</span></td>" +
+        '<td class="num">' + esc(c.http_status || "–") + "</td>" +
+        '<td class="num">' + (c.response_ms ? num(c.response_ms) : "–") + "</td>" +
+        "<td>" + esc(c.failure_reason || "–") + "</td>" +
+        '<td class="detail">' + esc(c.detail || "") + "</td>" +
+        "</tr>";
+    }).join("");
+
+    $("tableEmpty").hidden = rows.length > 0;
+    $("rowCount").textContent = num(slice.length) + " of " + num(rows.length) + " shown";
+    $("more").hidden = rows.length <= slice.length;
+  }
+
+  document.querySelectorAll(".filters button[data-f]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll(".filters button[data-f]").forEach(function (b) {
+        b.setAttribute("aria-pressed", String(b === btn));
+      });
+      state.filter = btn.getAttribute("data-f");
+      state.shown = PAGE;
+      drawTable();
+    });
+  });
+  $("search").addEventListener("input", function (e) {
+    state.query = e.target.value.trim().toLowerCase();
+    state.shown = PAGE;
+    drawTable();
+  });
+  $("more").addEventListener("click", function () { state.shown += PAGE; drawTable(); });
+  $("refresh").addEventListener("click", function () { left = REFRESH_MS / 1000; load(); });
+
+  var left = REFRESH_MS / 1000;
+  setInterval(function () {
+    left--;
+    if (left <= 0) { load(); left = REFRESH_MS / 1000; }
+    $("countdown").textContent = "refresh in " + left + "s";
+  }, 1000);
+
+  var resizeTimer;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { if (state.data) drawChart(state.data); }, 150);
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
